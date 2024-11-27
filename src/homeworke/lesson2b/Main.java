@@ -9,7 +9,7 @@ public class Main {
         phone.addContacts("Sidorov", "89035558899");
         phone.addContacts("Ivanov", "89005557789");
 
-        phone.getContactsByLastname("Ivanov");
+        phone.getContactsByLastname("Si");
 
     }
 }
