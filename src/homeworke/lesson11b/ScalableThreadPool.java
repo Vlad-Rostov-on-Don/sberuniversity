@@ -41,8 +41,8 @@ public class ScalableThreadPool implements ThreadPool {
             throw new IllegalStateException("Пул потоков не запущен. Сначала вызовите start().");
         }
         taskQueue.offer(runnable);
-        synchronized (this) {
-            if (currentThreads.get() < maxThreads && !taskQueue.isEmpty()) {
+        synchronized (currentThreads) {
+            if (currentThreads.get() < maxThreads) {
                 createWorker();
             }
         }
@@ -54,10 +54,11 @@ public class ScalableThreadPool implements ThreadPool {
     }
 
     private void createWorker() {
-        if (currentThreads.incrementAndGet() <= maxThreads) {
-            new Worker(threadGroup, "Worker-" + currentThreads.get()).start();
-        } else {
-            currentThreads.decrementAndGet();
+        synchronized (currentThreads) {
+            if (currentThreads.get() < maxThreads) {
+                currentThreads.incrementAndGet();
+                new Worker(threadGroup, "Worker-" + currentThreads.get()).start();
+            }
         }
     }
 
@@ -68,17 +69,27 @@ public class ScalableThreadPool implements ThreadPool {
 
         @Override
         public void run() {
-            while (isRunning || !taskQueue.isEmpty()) {
-                try {
-                    Runnable task = taskQueue.poll();
-                    if (task != null) {
-                        task.run();
-                    } else if (currentThreads.get() > minThreads) {
-                        currentThreads.decrementAndGet();
-                        break;
+            try {
+                while (isRunning || !taskQueue.isEmpty()) {
+                    Runnable task;
+                    try {
+                        task = taskQueue.take();
+                    } catch (InterruptedException e) {
+                        if (!isRunning) break;
+                        continue;
                     }
-                } catch (Exception e) {
-                    Thread.currentThread().interrupt();
+                    task.run();
+
+                    synchronized (currentThreads) {
+                        if (currentThreads.get() > minThreads && taskQueue.isEmpty()) {
+                            currentThreads.incrementAndGet();
+                            break;
+                        }
+                    }
+                }
+            } finally {
+                synchronized (currentThreads) {
+                    currentThreads.incrementAndGet();
                 }
             }
         }
